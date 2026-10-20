@@ -57,7 +57,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.1.2"
+APP_VERSION = "2.1.3"
 
 # 内部签名：不出现在界面和日志里，只留在源码和打包后的文件里
 TAGLINE = "最爱大肥鱼"
@@ -329,6 +329,9 @@ FRIENDLY_ERRORS = (
      "Edge 正在运行，yt-dlp 拷不了它的 cookie 数据库。先完全退出 Edge 再试，或改用导出的 cookies 文件"),
     ("could not copy firefox cookie database",
      "Firefox 正在运行，先完全退出 Firefox 再试"),
+    ("failed to decrypt with dpapi",
+     "Chrome / Edge 从 127 版起给 cookie 加了系统级加密（App-Bound Encryption），yt-dlp 解不开。"
+     "改用 Firefox（cookie 不加密，选中即可读），或者手工导出一份 cookies.txt 填进左边那栏"),
     ("sign in to confirm",
      "这个站点要求登录。用「或读浏览器」选你登录过的浏览器，或导入 cookies 文件"),
 )
@@ -340,6 +343,17 @@ def friendly_error(msg):
         if key in low:
             return hint
     return str(msg)
+
+
+def failure_hint(url, exc):
+    """在通用中文提示后面，按站点补一句更具体的实话。"""
+    hint = friendly_error(exc)
+    low = str(exc).lower()
+    if "douyin.com" in (url or "").lower() and "403" in low:
+        hint += ("\n    国内抖音 2026-10 起风控收紧：实测 yt-dlp（最新版）和 f2（最新版）"
+                 "带上已登录的 cookies 也一律 403，目前没有可用方案。"
+                 "急用请直接用抖音客户端保存，不必在程序里反复试。")
+    return hint
 
 
 def download_video(url, outdir, audio_only, quality, cookies, browser, emit, cancel=None, retries=3):
@@ -1084,7 +1098,7 @@ class App:
                     with lock:
                         fail[0] += 1
                 except DownloadFailed as e:
-                    emit("log", f"  ✗ 下载失败：{friendly_error(e)}")
+                    emit("log", f"  ✗ 下载失败：{failure_hint(url, e)}")
                     with lock:
                         fail[0] += 1
                 except Exception as e:
