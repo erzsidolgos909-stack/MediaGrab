@@ -57,7 +57,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.1.2"
 
 # 内部签名：不出现在界面和日志里，只留在源码和打包后的文件里
 TAGLINE = "最爱大肥鱼"
@@ -285,7 +285,69 @@ def _build_ydl_format(audio_only, quality):
     return "bestvideo+bestaudio/best"
 
 
+# yt-dlp 的抖音解析器只认 www.douyin.com/video/<数字>，短链和分享页要先还原
+DOUYIN_ID_RE = re.compile(r"(?:/video/|modal_id=)(\d{6,})")
+
+
+def resolve_video_url(url):
+    """把抖音短链/分享页换成解析器认的标准形式。其它链接原样返回，失败也原样返回。"""
+    low = (url or "").lower()
+    if "douyin.com" not in low and "iesdouyin.com" not in low:
+        return url
+
+    # 分享页/标准页里本来就带 id，直接拼
+    if "v.douyin.com" not in low:
+        m = DOUYIN_ID_RE.search(url)
+        if m:
+            return f"https://www.douyin.com/video/{m.group(1)}"
+        return url
+
+    # 短链：跟一次 302 拿到真实地址
+    if not HAS_REQUESTS:
+        return url
+    try:
+        resp = requests.get(url, headers={"User-Agent": USER_AGENT},
+                            allow_redirects=True, timeout=15, stream=True)
+        final = resp.url or ""
+        resp.close()
+        m = re.search(r"/video/(\d+)", final)
+        if m:
+            return f"https://www.douyin.com/video/{m.group(1)}"
+        return final if "douyin.com/video/" in final else url
+    except Exception:
+        return url
+
+
+# 把第三方库的英文报错换成看得懂的处理建议
+FRIENDLY_ERRORS = (
+    ("fresh cookies",
+     "抖音要求真实浏览器的登录态。办法：完全退出 Chrome（任务管理器里确认没有残留）→ 程序里「或读浏览器」选 Chrome；"
+     "或者用浏览器插件导出 Netscape 格式的 cookies 文件，填进 cookies 那一栏"),
+    ("could not copy chrome cookie database",
+     "Chrome 正在运行，yt-dlp 拷不了它的 cookie 数据库。先完全退出 Chrome 再试，或改用导出的 cookies 文件"),
+    ("could not copy edge cookie database",
+     "Edge 正在运行，yt-dlp 拷不了它的 cookie 数据库。先完全退出 Edge 再试，或改用导出的 cookies 文件"),
+    ("could not copy firefox cookie database",
+     "Firefox 正在运行，先完全退出 Firefox 再试"),
+    ("sign in to confirm",
+     "这个站点要求登录。用「或读浏览器」选你登录过的浏览器，或导入 cookies 文件"),
+)
+
+
+def friendly_error(msg):
+    low = str(msg).lower()
+    for key, hint in FRIENDLY_ERRORS:
+        if key in low:
+            return hint
+    return str(msg)
+
+
 def download_video(url, outdir, audio_only, quality, cookies, browser, emit, cancel=None, retries=3):
+    real_url = resolve_video_url(url)
+    if real_url != url:
+        emit("log", f"  链接已还原：{real_url}")
+    url = real_url
+
     os.makedirs(outdir, exist_ok=True)
     opts = {
         "outtmpl": os.path.join(outdir, "%(extractor_key)s", "%(title)s.%(ext)s"),
@@ -351,6 +413,9 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
             if any(k in msg for k in ("unsupported url", "no video formats", "video unavailable",
                                       "private video", "not a valid url")):
                 raise UnsupportedUrl(str(e).replace("ERROR: ", "").splitlines()[0]) from e
+            if any(k in msg for k in ("fresh cookies", "cookie database", "sign in to confirm")):
+                # 缺登录态重试没用，直接失败，省掉后面两轮白等
+                raise DownloadFailed(str(e).replace("ERROR: ", "").splitlines()[0]) from e
             last = e
         except Exception as e:
             last = e
@@ -1015,15 +1080,15 @@ class App:
                     with lock:
                         cancelled[0] += 1
                 except UnsupportedUrl as e:
-                    emit("log", f"  ✗ 无效或不支持的链接：{e}")
+                    emit("log", f"  ✗ 无效或不支持的链接：{friendly_error(e)}")
                     with lock:
                         fail[0] += 1
                 except DownloadFailed as e:
-                    emit("log", f"  ✗ 下载失败：{e}")
+                    emit("log", f"  ✗ 下载失败：{friendly_error(e)}")
                     with lock:
                         fail[0] += 1
                 except Exception as e:
-                    emit("log", f"  ✗ 意外错误：{e}")
+                    emit("log", f"  ✗ 意外错误：{friendly_error(e)}")
                     with lock:
                         fail[0] += 1
 

@@ -40,20 +40,22 @@ Set-Content 'build_python.txt' $python -Encoding UTF8
 $py  = (Select-String -Path 'MediaGrab.py'     -Pattern 'APP_VERSION = "([\d.]+)"').Matches[0].Groups[1].Value
 $vi  = (Select-String -Path 'version_info.txt' -Pattern "FileVersion', '([\d.]+)'").Matches[0].Groups[1].Value
 $iss = (Select-String -Path 'installer.iss'    -Pattern 'AppVersion "([\d.]+)"').Matches[0].Groups[1].Value
+$isv = (Select-String -Path 'installer.iss'    -Pattern 'VersionInfoProductVersion=([\d.]+)').Matches[0].Groups[1].Value
 
 function Normalize([string]$v) {
     $parts = $v.Split('.')
     while ($parts.Count -lt 3) { $parts += '0' }
     ($parts[0..2]) -join '.'
 }
-$npy = Normalize $py; $nvi = Normalize $vi; $niss = Normalize $iss
+$npy = Normalize $py; $nvi = Normalize $vi; $niss = Normalize $iss; $nisv = Normalize $isv
 
 "版本号自检："
 "  MediaGrab.py      APP_VERSION = $py"
 "  version_info.txt  FileVersion = $vi"
 "  installer.iss     AppVersion  = $iss"
-if ($npy -ne $nvi -or $npy -ne $niss) {
-    throw "三处版本号对不上（$npy / $nvi / $niss）。先改成一致再打包，否则发出去的几份程序版本会互相矛盾。"
+"  installer.iss     VersionInfoProductVersion = $isv"
+if ($npy -ne $nvi -or $npy -ne $niss -or $npy -ne $nisv) {
+    throw "版本号对不上（$npy / $nvi / $niss / $nisv）。先改成一致再打包，否则发出去的几份程序版本会互相矛盾。"
 }
 "  一致：$npy"
 ""
