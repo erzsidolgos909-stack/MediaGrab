@@ -1,0 +1,25 @@
+# 下载产物：体积大头，几百 MB 到几 GB，绝不进仓库
+downloads/
+downloads_images/
+
+# 个人数据：设置、历史、登录态
+config.json
+history.json
+instagram_cookies.txt
+logs/
+
+# 打包产物：可再生，跑 重新打包.bat 就有
+MediaGrab.exe
+dist/
+build/
+share/
+installer/*.exe
+
+# 第三方二进制
+deno.exe
+
+# 跟机器绑定的东西
+build_python.txt
+__pycache__/
+*.pyc
+*.bak

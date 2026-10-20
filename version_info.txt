@@ -1,0 +1,30 @@
+# UTF-8
+# MediaGrab 的文件属性（右键 -> 属性 -> 详细信息 里能看到）
+# PyInstaller 打包时通过 MediaGrab.spec 的 version= 参数读这个文件
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(2, 1, 0, 0),
+    prodvers=(2, 1, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '080404B0',
+        [StringStruct('CompanyName', '最爱大肥鱼'),
+         StringStruct('FileDescription', 'MediaGrab 图片/视频下载器'),
+         StringStruct('FileVersion', '2.1.0.0'),
+         StringStruct('InternalName', 'MediaGrab'),
+         StringStruct('LegalCopyright', 'Copyright (C) 2026 最爱大肥鱼'),
+         StringStruct('OriginalFilename', 'MediaGrab.exe'),
+         StringStruct('ProductName', 'MediaGrab'),
+         StringStruct('ProductVersion', '2.1.0.0')])
+    ]),
+    VarFileInfo([VarStruct('Translation', [2052, 1200])])
+  ]
+)
