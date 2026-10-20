@@ -57,7 +57,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.1"
+APP_VERSION = "2.1.1"
 
 # 内部签名：不出现在界面和日志里，只留在源码和打包后的文件里
 TAGLINE = "最爱大肥鱼"
@@ -73,6 +73,28 @@ BROWSER_KEYS = {
     "Brave": "brave",
     "Chromium": "chromium",
 }
+
+# 「自动」模式靠这张表判断该走 yt-dlp 还是 gallery-dl。
+# 为什么不用 yt-dlp 的 extractor 自动判断：它的 Generic extractor 匹配一切，
+# 排掉 Generic 后像 youtu.be 这种短链反而不认；而且 Instagram 这类图站会被它认领，
+# 图集会变成"只下一次"。所以宁可用一张能看懂、能手动加的表。
+VIDEO_URL_HINTS = (
+    "/watch?v=",
+    "youtube.com/shorts",
+    "youtu.be/",
+    "bilibili.com/video",
+    "/video/",
+    "tiktok.com",
+    "/reel/",
+    "douyin.com",      # 抖音：短链 v.douyin.com、分享页 modal_id 都靠这条
+    "kuaishou.com",    # 快手
+    "ixigua.com",      # 西瓜视频
+)
+
+
+def is_video_url(url):
+    """粗判一个链接该不该交给 yt-dlp。判错也能靠后面失败回退，但别乱判。"""
+    return any(k in (url or "").lower() for k in VIDEO_URL_HINTS)
 
 
 class DownloadFailed(Exception):
@@ -507,6 +529,8 @@ class App:
         self.q = queue.Queue()
         self.working = False
         self.cancel_event = threading.Event()
+        self._concurrent = False   # 并发数 > 1 时进度条改为不确定模式
+        self._cur_label = ""       # 正在处理第几条，显示在状态栏
         self.config = self._load_config()
         self.history = self._load_history()
         self._prune_logs()
@@ -874,6 +898,8 @@ class App:
 
         self.cancel_event.clear()
         self.working = True
+        self._concurrent = s["concurrency"] > 1
+        self._cur_label = ""
         self.download_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
         self.progress["value"] = 0
@@ -943,10 +969,6 @@ class App:
 
             total = len(urls)
             done_count = [0]
-
-            def is_video_url(u):
-                return any(k in u.lower() for k in ("/watch?v=", "bilibili.com/video", "youtube.com/shorts",
-                                                     "youtu.be/", "/video/", "tiktok.com", "/reel/"))
 
             def process_one(idx_url):
                 idx, url = idx_url
@@ -1044,6 +1066,7 @@ class App:
                 elif tag == "progress":
                     self._update_progress(item[1])
                 elif tag == "progress_label":
+                    self._cur_label = item[1]
                     self.status_var.set(item[1])
                 elif tag == "error":
                     self._append_log("✗ " + str(item[1]))
@@ -1084,7 +1107,17 @@ class App:
         downloaded = d.get("downloaded") or d.get("downloaded_bytes") or 0
         speed = d.get("speed")
         parts = []
-        if total:
+
+        if self._concurrent:
+            # 并发时几路下载共用一个进度条，百分比会来回跳，没有意义。
+            # 索性让进度条来回滚，只把字节数和速度当作"还活着"的证据。
+            if self.progress["mode"] != "indeterminate":
+                self.progress["mode"] = "indeterminate"
+                self.progress.start(12)
+            parts.append("正在下载……")
+            if total:
+                parts.append(f"{human_size(downloaded)} / {human_size(total)}")
+        elif total:
             if self.progress["mode"] != "determinate":
                 self.progress.stop()
                 self.progress["mode"] = "determinate"
@@ -1097,9 +1130,12 @@ class App:
                 self.progress["mode"] = "indeterminate"
                 self.progress.start(12)
             parts.append("正在下载……")
+
         if speed:
             parts.append(f"{human_size(speed)}/s")
-        self.status_var.set("  |  ".join(parts))
+
+        text = "  |  ".join(parts)
+        self.status_var.set(f"{self._cur_label}  |  {text}" if self._cur_label else text)
 
 
 def main():
