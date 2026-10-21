@@ -25,6 +25,7 @@ import queue
 import re
 import socket
 import sys
+import webbrowser
 import threading
 import time
 import tkinter as tk
@@ -57,10 +58,18 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 
 # 内部签名：不出现在界面和日志里，只留在源码和打包后的文件里
 TAGLINE = "最爱大肥鱼"
+
+# 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
+#   {"version": "2.3.0",
+#    "url": "https://.../MediaGrab-2.3.0-安装包.exe",
+#    "note": "补了失败重试和自动更新"}
+# 放哪都行：GitHub Release 的 raw、Gitee、自己的服务器。改这个常量要重新打包。
+UPDATE_URL = ""
+UPDATE_TIMEOUT = 4
 
 QUALITY_HEIGHTS = {"1080p": 1080, "720p": 720, "480p": 480}
 
@@ -125,6 +134,50 @@ EXT_BY_CTYPE = {
 
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
+
+
+# --------------------------------------------------------------------------- #
+# 更新检查（只比对版本号，不自动替换 EXE——那需要外部更新器，为一个自用工具不值）
+# --------------------------------------------------------------------------- #
+def version_tuple(v):
+    """"2.3.0" -> (2, 3, 0)；解析不了返回空元组，让调用方当"不知道"处理。"""
+    try:
+        parts = str(v).strip().lstrip("vV").split(".")
+        nums = [int(p) for p in parts[:3]]
+        while len(nums) < 3:
+            nums.append(0)
+        return tuple(nums)
+    except (ValueError, AttributeError):
+        return ()
+
+
+def is_newer(remote, current=None):
+    """远端版本是否比本机新。任一边解析不出来就返回 False——宁可漏报，不要误报。"""
+    current = current or APP_VERSION
+    rt, ct = version_tuple(remote), version_tuple(current)
+    if not rt or not ct:
+        return False
+    return rt > ct
+
+
+def fetch_update_info(url=None, timeout=UPDATE_TIMEOUT):
+    """请求更新清单。任何失败都返回 None，绝不抛——检查更新不该让程序出问题。"""
+    url = url if url is not None else UPDATE_URL
+    if not url or not HAS_REQUESTS:
+        return None
+    try:
+        resp = requests.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, dict) or not data.get("version"):
+            return None
+        return {
+            "version": str(data["version"]),
+            "url": str(data.get("url") or ""),
+            "note": str(data.get("note") or ""),
+        }
+    except Exception:
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -611,6 +664,9 @@ class App:
         self._concurrent = False   # 并发数 > 1 时进度条改为不确定模式
         self._cur_label = ""       # 正在处理第几条，显示在状态栏
         self.last_failed = []      # [(url, 原因)]，给「重试失败」用
+        self._update_info = None   # 更新清单，None = 还没拿到
+        self._update_tries = 0
+        self._update_silent = True
         self.config = self._load_config()
         self.history = self._load_history()
         self._prune_logs()
@@ -822,12 +878,14 @@ class App:
         self.log.grid(row=10, column=0, columnspan=3, sticky="nsew", **pad)
         frm.rowconfigure(10, weight=1)
 
-        # 底部：日志落盘位置
+        # 底部：日志落盘位置 + 检查更新
         foot = ttk.Frame(frm)
         foot.grid(row=11, column=0, columnspan=3, sticky="ew", pady=(0, 2))
         self.log_hint_var = tk.StringVar(value="")
         ttk.Label(foot, textvariable=self.log_hint_var, foreground="#777").pack(side="left", padx=6)
         ttk.Button(foot, text="打开日志", command=self.on_open_log).pack(side="right", padx=6)
+        self.update_btn = ttk.Button(foot, text="检查更新", command=self.on_check_update)
+        self.update_btn.pack(side="right", padx=(0, 6))
 
         self._append_log(f"MediaGrab v{APP_VERSION}")
         self._append_log("粘贴图站/直链/视频链接，每行一个。自动模式会根据链接选择下载方式。")
@@ -839,6 +897,7 @@ class App:
         self.log_hint_var.set(f"日志：logs\\{log_name}")
         self._append_log(f"日志文件：logs\\{log_name}")
         self._on_mode_change()
+        self._start_update_check(silent=True)
 
     def _on_mode_change(self, event=None):
         is_video = (self.mode_var.get() == "视频")
@@ -976,6 +1035,55 @@ class App:
             os.startfile(self.LOG_DIR)
         except Exception as e:
             messagebox.showerror("错误", f"无法打开日志目录：{e}")
+
+    # ---------- 检查更新 ----------
+    def _start_update_check(self, silent):
+        """后台发一次请求，主线程轮询结果——不在子线程里碰 Tk。"""
+        self._update_silent = silent
+        self._update_info = None
+        self._update_tries = 0
+        threading.Thread(target=self._bg_fetch_update, daemon=True).start()
+        self.root.after(600, self._poll_update)
+
+    def _bg_fetch_update(self):
+        self._update_info = fetch_update_info()
+
+    def _poll_update(self):
+        if self._update_info is not None or self._update_tries >= 12:
+            self._apply_update()
+            return
+        self._update_tries += 1
+        self.root.after(500, self._poll_update)
+
+    def _apply_update(self):
+        info = self._update_info
+        if not info:
+            if not self._update_silent:
+                self._append_log("检查更新：拿不到更新清单（没配地址，或网络不通）")
+            return
+        if is_newer(info["version"]):
+            self.update_btn.config(text=f"新版本 {info['version']}")
+            self._append_log(f"发现新版本 {info['version']}（当前 {APP_VERSION}）。点击「新版本」看说明。")
+        elif not self._update_silent:
+            self._append_log(f"检查更新：已是最新（{APP_VERSION}）")
+
+    def on_check_update(self):
+        info = self._update_info
+        if info and is_newer(info["version"]):
+            self._offer_download(info)
+            return
+        self._append_log("正在检查更新……")
+        self._start_update_check(silent=False)
+
+    def _offer_download(self, info):
+        note = info.get("note") or "（这一版没写说明）"
+        if messagebox.askyesno("发现新版本",
+                               f"当前 {APP_VERSION}，最新 {info['version']}。\n\n{note}\n\n"
+                               "打开下载页面吗？（装新版会覆盖旧版，配置和历史保留）"):
+            if info.get("url"):
+                webbrowser.open(info["url"])
+            else:
+                self._append_log("更新清单里没给下载地址（url 字段是空的）")
 
     def _collect_urls(self):
         text = self.url_text.get("1.0", "end")

@@ -149,3 +149,57 @@ class TestDeriveFilename:
         resp = self._Resp('attachment; filename="a:b*c?.png"')
         got = mg._derive_filename(resp, "https://a.com/x", "image/png")
         assert not any(ch in got for ch in '*?:')
+
+class TestUpdateCheck:
+    """检查更新只比对版本号，出错必须静默——不能让它把程序搞崩。"""
+
+    def test_version_tuple(self):
+        assert mg.version_tuple("2.3.0") == (2, 3, 0)
+        assert mg.version_tuple("v2.3") == (2, 3, 0)
+        assert mg.version_tuple("2") == (2, 0, 0)
+        assert mg.version_tuple("abc") == ()
+        assert mg.version_tuple(None) == ()
+
+    def test_is_newer(self):
+        assert mg.is_newer("2.4.0", "2.3.0")
+        assert mg.is_newer("2.10.0", "2.9.9")          # 按数字比，不是按字符串
+        assert not mg.is_newer("2.3.0", "2.3.0")
+        assert not mg.is_newer("2.2.9", "2.3.0")
+        assert not mg.is_newer("abc", "2.3.0")          # 解析不了就不报更新
+
+    def test_no_url_means_no_request(self, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("不该发请求")
+
+        monkeypatch.setattr(mg.requests, "get", boom)
+        assert mg.fetch_update_info("") is None
+
+    def test_parses_manifest(self, monkeypatch):
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"version": "9.9.9", "url": "https://x/y.exe", "note": "测试"}
+
+        monkeypatch.setattr(mg.requests, "get", lambda *a, **k: Resp())
+        got = mg.fetch_update_info("https://example.com/version.json")
+        assert got == {"version": "9.9.9", "url": "https://x/y.exe", "note": "测试"}
+
+    def test_ignores_manifest_without_version(self, monkeypatch):
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"url": "https://x/y.exe"}
+
+        monkeypatch.setattr(mg.requests, "get", lambda *a, **k: Resp())
+        assert mg.fetch_update_info("https://example.com/version.json") is None
+
+    def test_network_error_returns_none(self, monkeypatch):
+        def boom(*a, **k):
+            raise OSError("no network")
+
+        monkeypatch.setattr(mg.requests, "get", boom)
+        assert mg.fetch_update_info("https://example.com/version.json") is None
