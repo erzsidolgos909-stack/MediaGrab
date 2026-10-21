@@ -1,9 +1,9 @@
 ﻿; MediaGrab 安装包脚本（Inno Setup 6）
 ; 编译：ISCC.exe installer.iss
-; 产物：installer\MediaGrab-2.1.3-安装包.exe
+; 产物：installer\MediaGrab-2.2.0-安装包.exe
 
 #define AppName "MediaGrab"
-#define AppVersion "2.1.3"
+#define AppVersion "2.2.0"
 #define AppExe "MediaGrab.exe"
 
 [Setup]
@@ -13,11 +13,11 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=MediaGrab
-VersionInfoVersion=2.1.3.0
+VersionInfoVersion=2.2.0.0
 VersionInfoCompany=MediaGrab
 VersionInfoDescription=MediaGrab 安装程序
 VersionInfoProductName=MediaGrab
-VersionInfoProductVersion=2.1.3.0
+VersionInfoProductVersion=2.2.0.0
 DefaultDirName={autopf}\MediaGrab
 DefaultGroupName=MediaGrab
 DisableProgramGroupPage=yes

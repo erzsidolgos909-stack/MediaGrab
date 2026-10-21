@@ -57,7 +57,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.1.3"
+APP_VERSION = "2.2.0"
 
 # 内部签名：不出现在界面和日志里，只留在源码和打包后的文件里
 TAGLINE = "最爱大肥鱼"
@@ -610,6 +610,7 @@ class App:
         self.cancel_event = threading.Event()
         self._concurrent = False   # 并发数 > 1 时进度条改为不确定模式
         self._cur_label = ""       # 正在处理第几条，显示在状态栏
+        self.last_failed = []      # [(url, 原因)]，给「重试失败」用
         self.config = self._load_config()
         self.history = self._load_history()
         self._prune_logs()
@@ -712,8 +713,8 @@ class App:
     # ---------- 界面 ----------
     def build_ui(self):
         self.root.title(f"MediaGrab v{APP_VERSION}  ·  图片 / 视频")
-        self.root.geometry("780x660")
-        self.root.minsize(660, 580)
+        self.root.geometry("860x660")
+        self.root.minsize(760, 600)
 
         frm = ttk.Frame(self.root, padding=10)
         frm.grid(row=0, column=0, sticky="nsew")
@@ -801,6 +802,8 @@ class App:
         self.download_btn.pack(side="left", padx=(0, 6))
         self.stop_btn = ttk.Button(btns, text="停止", command=self.on_stop, state="disabled")
         self.stop_btn.pack(side="left", padx=(0, 12))
+        self.retry_btn = ttk.Button(btns, text="重试失败", command=self.on_retry_failed, state="disabled")
+        self.retry_btn.pack(side="left", padx=(0, 12))
         ttk.Button(btns, text="清空链接", command=self.on_clear).pack(side="left", padx=6)
         ttk.Button(btns, text="导入txt…", command=self.on_import_txt).pack(side="left", padx=6)
         ttk.Button(btns, text="清空历史", command=self.on_clear_history).pack(side="left", padx=6)
@@ -871,6 +874,50 @@ class App:
         self.stop_btn.config(state="disabled")
         self.status_var.set("正在停止……")
         self._append_log("已请求停止：当前这一条做完就停（图站链接无法中途打断）。")
+
+    def _update_retry_btn(self):
+        n = len(self.last_failed)
+        self.retry_btn.config(text=f"重试失败 ({n})" if n else "重试失败",
+                              state="normal" if (n and not self.working) else "disabled")
+
+    def on_retry_failed(self):
+        """把上一轮失败的链接填回输入框，再跑一遍。"""
+        if self.working or not self.last_failed:
+            return
+        if not self._confirm_retry():
+            return
+        urls = [u for u, _ in self.last_failed]
+        self.last_failed = []
+        self._update_retry_btn()
+        self.url_text.delete("1.0", "end")
+        self.url_text.insert("1.0", "\n".join(urls))
+        self._append_log(f"重试上一轮失败的 {len(urls)} 条链接……")
+        self.on_download()
+
+    def _confirm_retry(self):
+        """列出失败清单让用户看一眼，确认了才重试。"""
+        win = tk.Toplevel(self.root)
+        win.title(f"确认重试 {len(self.last_failed)} 条")
+        win.geometry("680x380")
+        win.transient(self.root)
+        txt = scrolledtext.ScrolledText(win, wrap="word")
+        txt.pack(fill="both", expand=True, padx=8, pady=8)
+        for i, (u, why) in enumerate(self.last_failed, 1):
+            txt.insert("end", f"{i}. {u}\n   原因：{why}\n\n")
+        txt.config(state="disabled")
+        answer = {"ok": False}
+
+        def yes():
+            answer["ok"] = True
+            win.destroy()
+
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bar, text="取消", command=win.destroy).pack(side="right")
+        ttk.Button(bar, text="重试这些", command=yes).pack(side="right", padx=(0, 6))
+        win.grab_set()
+        self.root.wait_window(win)
+        return answer["ok"]
 
     def on_clear_history(self):
         if not self.history:
@@ -979,6 +1026,8 @@ class App:
         self.working = True
         self._concurrent = s["concurrency"] > 1
         self._cur_label = ""
+        self.last_failed = []
+        self._update_retry_btn()
         self.download_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
         self.progress["value"] = 0
@@ -1006,6 +1055,7 @@ class App:
         fail = [0]
         cancelled = [0]
         new_urls = []
+        failed = []
         lock = threading.Lock()
 
         try:
@@ -1094,17 +1144,23 @@ class App:
                     with lock:
                         cancelled[0] += 1
                 except UnsupportedUrl as e:
-                    emit("log", f"  ✗ 无效或不支持的链接：{friendly_error(e)}")
+                    msg = friendly_error(e)
+                    emit("log", f"  ✗ 无效或不支持的链接：{msg}")
                     with lock:
                         fail[0] += 1
+                        failed.append((url, msg))
                 except DownloadFailed as e:
-                    emit("log", f"  ✗ 下载失败：{failure_hint(url, e)}")
+                    msg = failure_hint(url, e)
+                    emit("log", f"  ✗ 下载失败：{msg}")
                     with lock:
                         fail[0] += 1
+                        failed.append((url, msg))
                 except Exception as e:
-                    emit("log", f"  ✗ 意外错误：{friendly_error(e)}")
+                    msg = friendly_error(e)
+                    emit("log", f"  ✗ 意外错误：{msg}")
                     with lock:
                         fail[0] += 1
+                        failed.append((url, msg))
 
             workers = max(1, min(3, s["concurrency"]))
             if workers > 1:
@@ -1120,7 +1176,7 @@ class App:
             emit("error", f"任务异常终止：{e}")
         finally:
             # 无论成功、失败还是取消，都保证收尾，按钮一定能恢复
-            self.q.put(("summary", (ok[0], fail[0], cancelled[0], list(new_urls))))
+            self.q.put(("summary", (ok[0], fail[0], cancelled[0], list(new_urls), list(failed))))
             self.q.put(("done",))
 
     # ---------- 主线程轮询 ----------
@@ -1128,6 +1184,7 @@ class App:
         """恢复成「可以再点开始」的状态。summary 和 done 都会调，重复调无害。"""
         self.working = False
         self.cancel_event.clear()
+        self._update_retry_btn()
         self.download_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
         self.progress.stop()
@@ -1151,7 +1208,9 @@ class App:
                     self._append_log("✗ " + str(item[1]))
                     messagebox.showerror("错误", str(item[1]))
                 elif tag == "summary":
-                    ok, fail, cancelled, new_urls = item[1]
+                    ok, fail, cancelled, new_urls, failed = item[1]
+                    self.last_failed = list(failed)
+                    self._update_retry_btn()
                     self._finish_ui()
                     if new_urls:
                         self.history.update(new_urls)
