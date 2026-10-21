@@ -26,3 +26,4 @@ __pycache__/
 
 # 第三方工具环境（f2 的 venv，123 MB），不进仓库
 tools/
+.pytest_cache/
