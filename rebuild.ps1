@@ -15,6 +15,14 @@ $ErrorActionPreference = 'Continue'
 $proj = $PSScriptRoot
 Set-Location $proj
 
+# ---------- 0. 程序还在跑就别打包 ----------
+# 2026-10-21 踩过：两个 MediaGrab 进程占着根目录的 EXE，Copy-Item 静默失败，
+# 结果新版 EXE 没拷回来，校验报"版本对不上"，看着像打包坏了。
+$running = @(Get-Process MediaGrab -ErrorAction SilentlyContinue)
+if ($running.Count -gt 0) {
+    throw "还有 $($running.Count) 个 MediaGrab 进程在运行（PID: $(($running | ForEach-Object Id) -join ', ')）。先关掉程序再打包，否则新的 EXE 拷不回去。"
+}
+
 # ---------- 1. 找可用的 Python ----------
 $candidates = @()
 if (Test-Path 'build_python.txt') { $candidates += (Get-Content 'build_python.txt' -Raw).Trim() }
