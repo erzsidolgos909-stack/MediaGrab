@@ -1,85 +1,94 @@
 # MediaGrab
 
-一个 Windows 上的图片 / 视频下载器：粘链接、选目录、点开始。三类链接自动判断，界面用 Tkinter 写，能打包成单文件 EXE 发给不写代码的人。
+**English** | [简体中文](README.zh-CN.md)
+
+A Windows image and video downloader: paste a link, pick a folder, hit start. It decides which backend a URL needs on its own, the UI is plain Tkinter, and it packages into a single-file EXE that non-programmers can just double-click.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
-![Tests](https://img.shields.io/badge/tests-40%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-44%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## 能做什么
+## What it handles
 
-| 链接类型 | 走哪个后端 | 说明 |
+| Link type | Backend | Notes |
 |---|---|---|
-| 图站 / 相册 / 作者主页 | gallery-dl | Pixiv、X、Instagram、Reddit、Pinterest、微博、B 站相簿等上千个站点 |
-| 直接图片链接 | requests | 单张下载，微博 CDN 的小图自动换成大图 |
-| 视频 / 音频 | yt-dlp | YouTube、B 站、TikTok 等；可选 1080p / 720p / 480p，也能只提音频转 MP3 |
+| Image sites / albums / user pages | gallery-dl | Thousands of sites: Pixiv, X, Instagram, Reddit, Pinterest, Weibo, Bilibili albums… |
+| Direct image URLs | requests | Single file; Weibo CDN thumbnails are upgraded to full size automatically |
+| Video / audio | yt-dlp | YouTube, Bilibili, TikTok, … pick 1080p / 720p / 480p, or extract audio to MP3 |
 
-其他：
+Also:
 
-- 多链接一行一个，支持并发（1–3 路）
-- 可中断（直链和视频能真打断；图站要等当前这条跑完，gallery-dl 没给中断钩子）
-- 失败清单 + 一键重试：失败的链接进清单，点一下重跑，不用翻日志找
-- 日志按天落盘，保留 14 天
-- cookies 可以读浏览器（Firefox 可读；Chrome / Edge 新版读不了，见「已知限制」）
-- 启动时检查更新（只提示，不自动替换自己的 EXE）
+- One link per line, optional concurrency (1–3 jobs)
+- Cancellable — direct links and videos stop immediately; gallery jobs finish the current file first, because gallery-dl exposes no cancel hook
+- Failed-item list with one-click retry, instead of scrolling the log to find what broke
+- Daily log files on disk, kept for 14 days
+- Browser cookie import (Firefox works; see the Chrome/Edge limitation below)
+- Optional update check on startup — it only tells you, it never replaces its own EXE
 
-## 跑起来
+## Running it
 
-需要 Python 3.10+。
+Python 3.10+ required.
 
 ```bash
 pip install -r requirements.txt
 python MediaGrab.py
 ```
 
-想要单文件 EXE：
+Single-file EXE:
 
 ```bash
 python -m PyInstaller MediaGrab.spec --noconfirm
 ```
 
-产物在 `dist\`。注意：程序用 `app_dir()` 定位配置，**EXE 要放在自己单独的目录里**，不然 `config.json` / `history.json` 会跟着 EXE 到处跑。
+Output lands in `dist\`. Note that the app resolves its config via `app_dir()`, so **keep the EXE in its own folder** — otherwise `config.json` and `history.json` follow it around.
 
-## 测试
+## Tests
 
 ```bash
 python -m pytest tests -q
 ```
 
-40 个用例，0.4 秒。只测纯函数——链接判定、状态码翻译、短链还原、报错提示、文件名推导、体积换算。不碰网络也不碰界面，所以能当打包前的门禁。
+44 tests, roughly 22 seconds:
 
-## 代码结构
+- **40 unit tests** (0.4 s) — pure functions only: URL classification, status-code translation, short-link resolution, error messages, filename derivation, size formatting
+- **4 end-to-end tests** — a real Tk window, real worker thread and queue, and a local HTTP server serving test files. They verify the wiring: paste a link → press start → file lands on disk → buttons reset. No mouse simulation (that would need pywinauto, which is flaky against Tkinter), but it catches mis-wired buttons and broken thread handoffs
 
-单文件约 1400 行，按段切开：
+The build script runs the whole suite first and refuses to package when anything is red.
+
+## How the code is laid out
+
+One file, ~1400 lines, in sections:
 
 ```
 MediaGrab.py
-├── 依赖探测            缺库不崩，只把标志位设成 False
-├── 异常定义            DownloadFailed / UnsupportedUrl / Cancelled
-├── 工具函数            URL 清洗、体积换算、文件名推导
-├── 更新检查            版本比对 + 清单解析，失败一律静默
-├── 视频下载            yt-dlp 封装：重试、取消钩子、登录态
-├── 图片下载            gallery-dl 封装 + 直链下载（.part 再改名）
-└── App (Tkinter)       界面、线程快照、队列收单
+├── dependency probing    missing libs don't crash, they flip a flag to False
+├── exceptions            DownloadFailed / UnsupportedUrl / Cancelled
+├── helpers               URL cleaning, size formatting, filename derivation
+├── update check          version compare + manifest parsing, silent on failure
+├── video download        yt-dlp wrapper: retries, cancel hook, cookies
+├── image download        gallery-dl wrapper + direct download (.part then rename)
+└── App (Tkinter)         UI, thread snapshot, queue draining
 ```
 
-两个值得说明的设计：
+Three design notes worth calling out:
 
-**一、界面值在主线程快照后再进线程。** Tkinter 不线程安全，所以点「开始下载」时把 8 个控件值读成普通变量，打包传给后台线程，线程里不再碰任何 Tk 对象。
+**1. Widget values are snapshotted on the main thread before the worker starts.** Tkinter isn't thread-safe, so pressing Start reads eight widget values into plain variables and passes them into the background thread. The worker never touches a Tk object.
 
-**二、`gallery-dl` 的返回值是整数状态码，不是对象。** `DownloadJob.run()` 返回位掩码，`rc != 0` 才算失败。早先版本误当成 `.total / .success` 去取，结果是永远 0——日志显示「共下载 0/0 张」，失败也被算成成功。
+**2. `gallery-dl`'s `run()` returns an integer status mask, not an object.** Treating it like an object (`getattr(status, "total", 0)`) silently yields `0` forever — the log showed "downloaded 0/0 files" and failures were counted as successes. The fix: check `rc != 0`.
 
-## 已知限制
+**3. Never use a function's return value as proof that its side effect worked.** `build_options()` only writes into gallery-dl's global config and has no return value (implicit `None`). A caller treated that `None` as "image support unavailable", so every image download in v2.3.0–v2.3.2 failed with "missing dependencies" while the dependencies were installed all along. Only the end-to-end test surfaced it.
 
-**国内抖音下不了。** 链接能还原、登录态能拿到、`a_bogus` 签名能算、TLS 指纹能伪装，五层都过了，抖音的视频详情接口仍然返回 403。卡点在它页面 JS 里的会话密钥，纯 HTTP 客户端拿不到。
+## Known limitations
 
-**Chrome / Edge 的 cookie 读不了。** 从 127 版起这两个浏览器用 App-Bound Encryption 保护 cookie，yt-dlp 只支持老式 DPAPI，报 `Failed to decrypt with DPAPI`。要登录态请用 Firefox，或者导入 Netscape 格式的 cookies 文件。
+**Mainland Douyin doesn't work.** Short links resolve, real login cookies are accepted, the `a_bogus` signature is computed, the TLS fingerprint is impersonated — all five layers pass, and the video detail endpoint still answers 403. The blocking piece is a session key generated inside their page JavaScript, which a plain HTTP client cannot obtain.
 
-**只支持 Windows。** 打包脚本、路径处理都按 Windows 写的。
+**Chrome and Edge cookies can't be read.** Since Chrome 127 both browsers protect cookies with App-Bound Encryption, while yt-dlp only implements the older DPAPI scheme (`Failed to decrypt with DPAPI`). Use Firefox for logged-in sites, or import a Netscape-format cookie file.
 
-**单文件 EXE 启动慢两三秒**，每次要先解压。
+**Windows only.** The build scripts and path handling assume Windows.
 
-## 许可
+**The single-file EXE takes 2–3 seconds to start**, because it unpacks itself each time.
 
-MIT，见 [LICENSE](LICENSE)。
+## License
+
+MIT — see [LICENSE](LICENSE).
