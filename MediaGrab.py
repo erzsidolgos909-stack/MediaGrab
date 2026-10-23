@@ -58,14 +58,11 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.3.1"
-
-# 内部签名：不出现在界面和日志里，只留在源码和打包后的文件里
-TAGLINE = "最爱大肥鱼"
+APP_VERSION = "2.3.2"
 
 # 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
-#   {"version": "2.3.0",
-#    "url": "https://.../MediaGrab-2.3.0-安装包.exe",
+#   {"version": "2.3.2",
+#    "url": "https://.../MediaGrab-2.3.2-安装包.exe",
 #    "note": "补了失败重试和自动更新"}
 # 放哪都行：GitHub Release 的 raw、Gitee、自己的服务器。改这个常量要重新打包。
 UPDATE_URL = "https://gitee.com/mapjey/mediagrab/raw/master/version.json"
