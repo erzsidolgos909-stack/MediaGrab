@@ -9,6 +9,17 @@ A Windows image and video downloader: paste a link, pick a folder, hit start. It
 ![Tests](https://img.shields.io/badge/tests-44%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Download
+
+Don't want to run Python? Grab a build from [**Releases**](https://github.com/erzsidolgos909-stack/MediaGrab/releases) — no environment needed:
+
+| File | What it is |
+|---|---|
+| `MediaGrab-x.y.z-setup.exe` | Installer: Start-menu shortcuts, uninstaller, installs per-user without an admin prompt |
+| `MediaGrab-x.y.z-portable.zip` | Portable: unzip anywhere and run |
+
+Both are unsigned, so Windows SmartScreen and some antivirus engines may warn about them — that's the usual PyInstaller false positive.
+
 ## What it handles
 
 | Link type | Backend | Notes |

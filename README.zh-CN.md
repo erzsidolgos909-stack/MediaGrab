@@ -9,6 +9,17 @@
 ![Tests](https://img.shields.io/badge/tests-44%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## 下载
+
+不想装 Python？去 [**发行版**](https://github.com/erzsidolgos909-stack/MediaGrab/releases) 直接拿打包好的：
+
+| 文件 | 是什么 |
+|---|---|
+| `MediaGrab-x.y.z-setup.exe` | 安装包：有开始菜单、有卸载程序，装到当前用户不弹 UAC |
+| `MediaGrab-x.y.z-portable.zip` | 绿色版：解压到任意目录就能跑 |
+
+两个都没有数字签名，Windows 的 SmartScreen 和部分杀毒软件可能拦一下——PyInstaller 打包的通病，加信任即可。
+
 ## 能做什么
 
 | 链接类型 | 走哪个后端 | 说明 |
