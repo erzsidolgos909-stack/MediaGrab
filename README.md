@@ -100,6 +100,12 @@ Three design notes worth calling out:
 
 **The single-file EXE takes 2–3 seconds to start**, because it unpacks itself each time.
 
+## Disclaimer
+
+MediaGrab is only a front-end for [gallery-dl](https://github.com/mikf/gallery-dl) and [yt-dlp](https://github.com/yt-dlp/yt-dlp). Every download capability comes from those libraries; this project contains no DRM circumvention and no paywall bypass.
+
+Use it only for content you have the right to download, and follow each site's terms of service and your local law. Redistributing what you download may infringe someone's copyright. The author is not responsible for how this tool is used.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

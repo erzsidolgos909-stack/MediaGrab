@@ -100,6 +100,12 @@ MediaGrab.py
 
 **单文件 EXE 启动慢两三秒**，每次要先解压。
 
+## 免责声明
+
+MediaGrab 只是 [gallery-dl](https://github.com/mikf/gallery-dl) 和 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 的界面，下载能力全部来自这两个库。本项目**不包含任何破解、绕过 DRM 或绕过付费墙的实现**。
+
+请只用来下载你有权下载的内容，遵守各网站的服务条款和当地法律。把下载下来的东西二次传播可能侵犯著作权。作者不对使用者的行为负责。
+
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。
