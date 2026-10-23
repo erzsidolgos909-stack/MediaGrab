@@ -18,6 +18,7 @@ VersionInfoCompany=MediaGrab
 VersionInfoDescription=MediaGrab 安装程序
 VersionInfoProductName=MediaGrab
 VersionInfoProductVersion=2.3.2.0
+VersionInfoCopyright=Copyright (C) 2026 mapjey
 DefaultDirName={autopf}\MediaGrab
 DefaultGroupName=MediaGrab
 DisableProgramGroupPage=yes
