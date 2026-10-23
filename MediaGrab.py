@@ -58,7 +58,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.3.3"
 
 # 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
 #   {"version": "2.3.2",
@@ -1192,7 +1192,12 @@ class App:
             mode = s["mode"]
             quality = s["quality"]
             audio_only = s["audio_only"]
-            img_options = build_options(outdir, s["skip"], cookies, browser) if mode in ("自动", "图片") else None
+            # 图片通道是否可用，看依赖在不在；build_options 只写 gallery-dl 的全局配置，
+            # 没有返回值，不能拿它的返回值当"可用"标志（v2.3.2 之前就是这么错的：
+            # 所有图站和直链图片都被误判成"缺少依赖"而失败）。
+            img_ready = bool(HAS_GALLERYDL and HAS_REQUESTS)
+            if img_ready and mode in ("自动", "图片"):
+                build_options(outdir, s["skip"], cookies, browser)
 
             emit("log", f"输出目录：{outdir}")
             emit("log", f"跳过已存在文件：{'是' if s['skip'] else '否'}")
@@ -1232,9 +1237,9 @@ class App:
                         path = download_video(url, outdir, audio_only, quality, cookies,
                                               browser, emit=emit, cancel=cancel)
                     else:
-                        if img_options is None:
+                        if not img_ready:
                             raise DownloadFailed("图片下载不可用（缺少 gallery-dl / requests）")
-                        path = download_one(url, outdir, img_options, emit=emit, cancel=cancel)
+                        path = download_one(url, outdir, None, emit=emit, cancel=cancel)
                     if cancel.is_set():
                         raise Cancelled("已取消")
                     if path:

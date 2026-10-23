@@ -68,6 +68,18 @@ if ($npy -ne $nvi -or $npy -ne $niss -or $npy -ne $nisv) {
 "  一致：$npy"
 ""
 
+# ---------- 2.5 测试门禁 ----------
+# 2026-10-23 加：E2E 第一次跑就抓到一个真 bug（所有图片下载被误判成"缺依赖"），
+# 单元测试看不出来，因为那些只测纯函数。红了就别打包，打出来的是坏包。
+"跑测试……"
+$testLog = & $python -m pytest tests -q 2>&1
+$testLog | Select-Object -Last 3 | ForEach-Object { "  " + $_ }
+if ($LASTEXITCODE -ne 0) {
+    throw "测试没过（退出码 $LASTEXITCODE），先修好再打包。"
+}
+"  测试全过"
+""
+
 # ---------- 3. 打包 ----------
 "打包中……"
 $log = & $python -m PyInstaller MediaGrab.spec --noconfirm --distpath dist --workpath build 2>&1
