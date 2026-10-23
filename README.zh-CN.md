@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-A downloader for images and videos on Windows: paste a link, pick a folder, press start. It figures out which backend a URL needs, uses Tkinter for the UI, and can be packaged into a single-file EXE for people who don't write code.
+一个 Windows 上的图片 / 视频下载器：粘链接、选目录、点开始。三类链接自动判断，界面用 Tkinter 写，能打包成单文件 EXE 发给不写代码的人。
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
