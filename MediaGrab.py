@@ -58,7 +58,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.3.3"
+APP_VERSION = "2.3.4"
 
 # 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
 #   {"version": "2.3.2",
@@ -100,7 +100,12 @@ VIDEO_URL_HINTS = (
 
 def is_video_url(url):
     """粗判一个链接该不该交给 yt-dlp。判错也能靠后面失败回退，但别乱判。"""
-    return any(k in (url or "").lower() for k in VIDEO_URL_HINTS)
+    low = (url or "").lower()
+    # TikTok 的 /photo/ 是图片帖（滑图 + 背景音乐）。yt-dlp 的 TikTok 解析器
+    # 只认 /video/，遇到 /photo/ 直接 Unsupported URL；gallery-dl 能正常下。
+    if "/photo/" in low:
+        return False
+    return any(k in low for k in VIDEO_URL_HINTS)
 
 
 class DownloadFailed(Exception):

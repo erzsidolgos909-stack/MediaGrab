@@ -30,6 +30,9 @@ class TestVideoUrl:
         "https://www.pixiv.net/artworks/123",
         "https://example.com/cat.jpg",
         "https://x.com/someone/status/123",
+        # TikTok 的图片帖：yt-dlp 只认 /video/，/photo/ 必须走 gallery-dl
+        "https://www.tiktok.com/@pangjiewrr/photo/7699851645227715858",
+        "https://www.tiktok.com/@x/photo/123?is_from_webapp=1&sender_device=pc",
     ])
     def test_image_sites_not_misjudged(self, url):
         assert not mg.is_video_url(url), url
