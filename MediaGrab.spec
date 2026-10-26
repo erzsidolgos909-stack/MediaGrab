@@ -8,7 +8,10 @@ HERE = SPECPATH
 datas = []
 binaries = []
 _deno = os.path.join(HERE, 'deno.exe')
-if os.path.isfile(_deno):
+# deno 占了 93 MB，是包里最大的东西。Gitee 单个附件上限 100 MB，
+# 完整包会超限；需要小体积时设 MG_SLIM=1 打不带 deno 的版本。
+# 代价：YouTube 解析需要 JS 运行时，精简版要用户自己装 deno。
+if os.path.isfile(_deno) and os.environ.get('MG_SLIM') != '1':
     binaries.append((_deno, '.'))
 
 hiddenimports = []

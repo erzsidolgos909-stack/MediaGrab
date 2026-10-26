@@ -30,3 +30,6 @@ tools/
 
 # 给 GitHub Release 用的 ASCII 名副本
 dist-upload/
+
+dist_slim/
+build_slim/
