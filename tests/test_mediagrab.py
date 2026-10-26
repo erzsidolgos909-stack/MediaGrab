@@ -79,6 +79,37 @@ class TestRcMessage:
         assert "未知错误" in mg._rc_message(64)
 
 
+class TestYdlFormat:
+    """格式串决定下下来的文件手机能不能放。
+
+    compat=True 要 H.264(avc1) + AAC(m4a)：手机原生支持。
+    compat=False 是最高画质路线，YouTube 的 4K/8K 只有 AV1/VP9 + Opus。
+    """
+
+    def test_compat_prefers_h264(self):
+        for quality in ("best", "1080p", "720p", "480p"):
+            fmt = mg._build_ydl_format(False, quality, True)
+            assert "avc1" in fmt, f"{quality} 应该优先 h264：{fmt}"
+            assert "m4a" in fmt, f"{quality} 应该优先 aac：{fmt}"
+
+    def test_non_compat_keeps_best(self):
+        assert mg._build_ydl_format(False, "best", False) == "bestvideo+bestaudio/best"
+        assert "avc1" not in mg._build_ydl_format(False, "1080p", False)
+
+    def test_height_respected(self):
+        assert "height<=720" in mg._build_ydl_format(False, "720p", True)
+        assert "height<=1080" in mg._build_ydl_format(False, "1080p", False)
+
+    def test_audio_only_ignores_video(self):
+        assert mg._build_ydl_format(True, "1080p", True) == "bestaudio/best"
+        assert mg._build_ydl_format(True, "best", False) == "bestaudio/best"
+
+    def test_compat_has_fallback(self):
+        # 万一某个视频没有 avc1（罕见），要能退回别的格式，而不是直接失败
+        fmt = mg._build_ydl_format(False, "best", True)
+        assert fmt.count("/") >= 2, f"应该有多级回退：{fmt}"
+
+
 class TestFriendlyError:
     def test_fresh_cookies_gives_chinese_advice(self):
         msg = mg.friendly_error(
@@ -130,7 +161,10 @@ class TestHelpers:
     def test_build_ydl_format(self):
         assert mg._build_ydl_format(True, "1080p") == "bestaudio/best"
         assert "height<=720" in mg._build_ydl_format(False, "720p")
-        assert mg._build_ydl_format(False, "best") == "bestvideo+bestaudio/best"
+        # 关掉「手机兼容」才是无脑要最好
+        assert mg._build_ydl_format(False, "best", False) == "bestvideo+bestaudio/best"
+        # 默认开着兼容：优先 h264
+        assert "avc1" in mg._build_ydl_format(False, "best")
 
 
 class TestDeriveFilename:

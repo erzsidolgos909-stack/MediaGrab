@@ -58,7 +58,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.3.5"
+APP_VERSION = "2.3.6"
 
 # 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
 #   {"version": "2.3.2",
@@ -335,10 +335,23 @@ def find_deno():
     return False
 
 
-def _build_ydl_format(audio_only, quality):
+def _build_ydl_format(audio_only, quality, compat=True):
+    """拼 yt-dlp 的格式串。
+
+    compat=True（默认）：优先 H.264 + AAC，手机能直接放。
+    compat=False：要最高画质，YouTube 的 4K/8K 只有 AV1/VP9 + Opus，
+    很多手机播放器放不出画面、iPhone 上还没有声音。
+    """
     if audio_only:
         return "bestaudio/best"
     height = QUALITY_HEIGHTS.get(quality)
+    if compat:
+        if height:
+            return (f"bestvideo[height<={height}][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                    f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/"
+                    f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best")
+        return ("bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/"
+                "best[ext=mp4]/bestvideo+bestaudio/best")
     if height:
         return (f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/"
                 f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best")
@@ -416,7 +429,8 @@ def failure_hint(url, exc):
     return hint
 
 
-def download_video(url, outdir, audio_only, quality, cookies, browser, emit, cancel=None, retries=3):
+def download_video(url, outdir, audio_only, quality, cookies, browser, emit, cancel=None, retries=3,
+                   compat=True):
     real_url = resolve_video_url(url)
     if real_url != url:
         emit("log", f"  链接已还原：{real_url}")
@@ -429,7 +443,7 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
         # playlist_index 只在多条目时才有值，单个视频渲染成空。
         "outtmpl": os.path.join(outdir, "%(extractor_key)s",
                                 "%(title)s%(playlist_index& [{:02d}]|)s.%(ext)s"),
-        "format": _build_ydl_format(audio_only, quality),
+        "format": _build_ydl_format(audio_only, quality, compat),
         "merge_output_format": "mp4",
         "noplaylist": True,
         "retries": retries,
@@ -477,14 +491,15 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
             if info is None:
                 # ignoreerrors=True 时，整体失败会返回 None 而不是抛异常
                 raise DownloadFailed("这条链接没有可下载的内容（可能是纯图片帖，或需要登录）")
-            path = state.get("path")
+            # 优先用 yt-dlp 给的最终文件路径：合并后是 .mp4，
+            # 而 progress hook 最后一条记的是音频流（.m4a），会误导日志。
+            path = None
+            for item in (info.get("requested_downloads") or []):
+                if item.get("filepath"):
+                    path = item["filepath"]
+                    break
             if not path:
-                for item in (info.get("requested_downloads") or []):
-                    if item.get("filepath"):
-                        path = item["filepath"]
-                        break
-                if not path:
-                    path = info.get("filepath") or info.get("_filename")
+                path = info.get("filepath") or info.get("_filename") or state.get("path")
             if not path:
                 raise DownloadFailed("下载完成但未能定位输出文件")
             return path
@@ -755,6 +770,7 @@ class App:
                 "quality": self.quality_var.get(),
                 "format": self.format_var.get(),
                 "beep": bool(self.beep_var.get()),
+                "compat": bool(self.compat_var.get()),
                 "concurrency": self.concurrency_var.get(),
             }
             with open(self.CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -844,6 +860,9 @@ class App:
         ttk.Checkbutton(opts, text="跳过已存在的文件", variable=self.skip_var).pack(side="left", padx=(0, 16))
         self.beep_var = tk.BooleanVar(value=self.config.get("beep", True))
         ttk.Checkbutton(opts, text="完成提示音", variable=self.beep_var).pack(side="left", padx=(0, 16))
+        # 默认勾上：YouTube 的 4K/8K 是 AV1/VP9 + Opus，手机常常放不出来
+        self.compat_var = tk.BooleanVar(value=self.config.get("compat", True))
+        ttk.Checkbutton(opts, text="手机兼容（H.264）", variable=self.compat_var).pack(side="left", padx=(0, 16))
         ttk.Label(opts, text="同时下载量：").pack(side="left")
         self.concurrency_var = tk.StringVar(value=str(self.config.get("concurrency", "1")))
         ttk.Combobox(opts, textvariable=self.concurrency_var, state="readonly", width=4,
@@ -1144,6 +1163,7 @@ class App:
             "quality": "best" if self.quality_var.get() == "最佳" else self.quality_var.get(),
             "audio_only": (self.format_var.get() == "MP3 音频"),
             "skip": bool(self.skip_var.get()),
+            "compat": bool(self.compat_var.get()),
             "concurrency": self._safe_int(self.concurrency_var.get(), 1),
         }
 
@@ -1256,7 +1276,8 @@ class App:
                     if use_video:
                         try:
                             path = download_video(url, outdir, audio_only, quality, cookies,
-                                                  browser, emit=emit, cancel=cancel)
+                                                  browser, emit=emit, cancel=cancel,
+                                                  compat=s.get("compat", True))
                         except UnsupportedUrl:
                             # yt-dlp 认不出或说"没有视频格式"（比如纯图片帖），
                             # 换图片通道再试一次——Instagram 的图文帖就靠这条回退。
