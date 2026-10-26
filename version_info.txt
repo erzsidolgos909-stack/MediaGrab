@@ -3,8 +3,8 @@
 # PyInstaller 打包时通过 MediaGrab.spec 的 version= 参数读这个文件
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 3, 4, 0),
-    prodvers=(2, 3, 4, 0),
+    filevers=(2, 3, 5, 0),
+    prodvers=(2, 3, 5, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,12 +18,12 @@ VSVersionInfo(
         '080404B0',
         [StringStruct('CompanyName', 'MediaGrab'),
          StringStruct('FileDescription', 'MediaGrab 图片/视频下载器'),
-         StringStruct('FileVersion', '2.3.4.0'),
+         StringStruct('FileVersion', '2.3.5.0'),
          StringStruct('InternalName', 'MediaGrab'),
          StringStruct('LegalCopyright', 'Copyright (C) 2026 mapjey'),
          StringStruct('OriginalFilename', 'MediaGrab.exe'),
          StringStruct('ProductName', 'MediaGrab'),
-         StringStruct('ProductVersion', '2.3.4.0')])
+         StringStruct('ProductVersion', '2.3.5.0')])
     ]),
     VarFileInfo([VarStruct('Translation', [2052, 1200])])
   ]

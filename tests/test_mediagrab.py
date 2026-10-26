@@ -21,12 +21,15 @@ class TestVideoUrl:
         "https://youtu.be/abc",
         "https://www.youtube.com/watch?v=abc",
         "https://www.bilibili.com/video/BV1xx411c7mD",
+        # Instagram 统一走 yt-dlp：它用移动端接口，同一份 cookies 能拿到数据；
+        # gallery-dl 的 Instagram 支持从 2026 年起整体失效（一律被踢回登录页）
+        "https://www.instagram.com/p/De5uPVMnwOf/",
+        "https://www.instagram.com/reel/ABC123/",
     ])
     def test_video_sites(self, url):
         assert mg.is_video_url(url), url
 
     @pytest.mark.parametrize("url", [
-        "https://www.instagram.com/p/ABC/",
         "https://www.pixiv.net/artworks/123",
         "https://example.com/cat.jpg",
         "https://x.com/someone/status/123",

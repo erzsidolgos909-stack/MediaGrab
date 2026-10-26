@@ -58,7 +58,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.3.4"
+APP_VERSION = "2.3.5"
 
 # 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
 #   {"version": "2.3.2",
@@ -105,6 +105,11 @@ def is_video_url(url):
     # 只认 /video/，遇到 /photo/ 直接 Unsupported URL；gallery-dl 能正常下。
     if "/photo/" in low:
         return False
+    # Instagram：先给 yt-dlp。它走移动端接口，同一份 cookies 能拿到数据；
+    # gallery-dl 的 Instagram 支持从 2026 年起整体失效（一律被踢回登录页）。
+    # 纯图片帖 yt-dlp 会报 "No video formats found"，这时由上层回退到 gallery-dl。
+    if "instagram.com" in low:
+        return True
     return any(k in low for k in VIDEO_URL_HINTS)
 
 
@@ -419,7 +424,11 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
 
     os.makedirs(outdir, exist_ok=True)
     opts = {
-        "outtmpl": os.path.join(outdir, "%(extractor_key)s", "%(title)s.%(ext)s"),
+        # 相册（Instagram carousel、播放列表）里每项的标题常常一样，
+        # 不加序号会互相覆盖——2026-10-26 实测：12 个视频只剩 1 个。
+        # playlist_index 只在多条目时才有值，单个视频渲染成空。
+        "outtmpl": os.path.join(outdir, "%(extractor_key)s",
+                                "%(title)s%(playlist_index& [{:02d}]|)s.%(ext)s"),
         "format": _build_ydl_format(audio_only, quality),
         "merge_output_format": "mp4",
         "noplaylist": True,
@@ -429,6 +438,9 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
         "concurrent_fragment_downloads": 8,
         "quiet": True,
         "no_warnings": True,
+        # 相册/图集帖里常混着图片子项，yt-dlp 遇到会报 "No video formats found"。
+        # 不开这个，一个图片子项会让整条帖子放弃（Instagram 的 12 个视频就是这样丢的）。
+        "ignoreerrors": True,
         "postprocessors": [],
     }
     ffmpeg = find_ffmpeg()
@@ -462,6 +474,9 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
+            if info is None:
+                # ignoreerrors=True 时，整体失败会返回 None 而不是抛异常
+                raise DownloadFailed("这条链接没有可下载的内容（可能是纯图片帖，或需要登录）")
             path = state.get("path")
             if not path:
                 for item in (info.get("requested_downloads") or []):
@@ -1239,8 +1254,16 @@ class App:
                 use_video = (mode == "视频") or (mode == "自动" and is_video_url(url) and HAS_YTDLP)
                 try:
                     if use_video:
-                        path = download_video(url, outdir, audio_only, quality, cookies,
-                                              browser, emit=emit, cancel=cancel)
+                        try:
+                            path = download_video(url, outdir, audio_only, quality, cookies,
+                                                  browser, emit=emit, cancel=cancel)
+                        except UnsupportedUrl:
+                            # yt-dlp 认不出或说"没有视频格式"（比如纯图片帖），
+                            # 换图片通道再试一次——Instagram 的图文帖就靠这条回退。
+                            if not img_ready or mode == "视频":
+                                raise
+                            emit("log", "  视频通道不认识这条，改用图片通道重试……")
+                            path = download_one(url, outdir, None, emit=emit, cancel=cancel)
                     else:
                         if not img_ready:
                             raise DownloadFailed("图片下载不可用（缺少 gallery-dl / requests）")
