@@ -58,7 +58,7 @@ except ImportError:
     YTDL_DownloadError = Exception
 
 
-APP_VERSION = "2.3.6"
+APP_VERSION = "2.3.7"
 
 # 更新检查：填一个返回下面这种 JSON 的地址就能用；留空则「检查更新」只报未配置。
 #   {"version": "2.3.2",
@@ -335,6 +335,15 @@ def find_deno():
     return False
 
 
+def _looks_like_stream_file(path):
+    """判断是不是 yt-dlp 没合并的中间文件（xxx.f299.mp4 / xxx.f140.m4a）。
+
+    正常成品是「标题.mp4」，不会带 .f<数字> 这种流编号。
+    """
+    name = os.path.basename(path or "")
+    return re.search(r"\.f\d+\.[A-Za-z0-9]+$", name) is not None
+
+
 def _build_ydl_format(audio_only, quality, compat=True):
     """拼 yt-dlp 的格式串。
 
@@ -502,6 +511,13 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
                 path = info.get("filepath") or info.get("_filename") or state.get("path")
             if not path:
                 raise DownloadFailed("下载完成但未能定位输出文件")
+            # yt-dlp 的中间文件名长这样：xxx.f299.mp4（视频流）、xxx.f140.m4a（音频流）。
+            # 出现它说明「没合并」——通常是音频下载中断，被 ignoreerrors 吞掉了，
+            # 结果只剩一条视频轨，看着像成品其实没声音。2026-10-28 实测踩过。
+            if _looks_like_stream_file(path):
+                raise DownloadFailed(
+                    "只下到了视频流或音频流（合并没发生），这条要重下。\n"
+                    "    常见原因：下载音频时网络断了。文件是完整的视频但没有声音。")
             return path
         except Cancelled:
             raise

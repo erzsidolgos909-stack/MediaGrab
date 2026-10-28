@@ -79,6 +79,34 @@ class TestRcMessage:
         assert "未知错误" in mg._rc_message(64)
 
 
+class TestStreamFileDetect:
+    """yt-dlp 没合并时会留下 xxx.f299.mp4 这种中间文件。
+
+    2026-10-28 踩过：音频下载中断被 ignoreerrors 吞掉，程序却报了「成功」，
+    实际下到的是没声音的视频轨。这个判定就是拿来拦住它的。
+    """
+
+    @pytest.mark.parametrize("path", [
+        r"D:\d\Youtube\标题.f299.mp4",
+        r"D:\d\Youtube\标题.f140.m4a",
+        r"D:\d\a\b.f137.webm",
+        "/home/u/标题.f18.mp4",
+    ])
+    def test_detects_stream_files(self, path):
+        assert mg._looks_like_stream_file(path), path
+
+    @pytest.mark.parametrize("path", [
+        r"D:\d\Youtube\标题.mp4",
+        r"D:\d\Youtube\Video by x [02].mp4",
+        r"D:\d\Youtube\标题.f140-1.m4a.part",
+        r"D:\d\图片 v2.mp4",
+        "",
+        None,
+    ])
+    def test_normal_files_pass(self, path):
+        assert not mg._looks_like_stream_file(path), path
+
+
 class TestYdlFormat:
     """格式串决定下下来的文件手机能不能放。
 
