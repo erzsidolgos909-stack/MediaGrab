@@ -15,7 +15,10 @@ if os.path.isfile(_deno) and os.environ.get('MG_SLIM') != '1':
     binaries.append((_deno, '.'))
 
 hiddenimports = []
-for _pkg in ('yt_dlp', 'imageio_ffmpeg', 'gallery_dl'):
+# yt_dlp_ejs 是 yt-dlp 的「JS 挑战求解脚本」（2026 版起必需）。
+# 不打包它，YouTube 的签名和 n 挑战解不出来 → 视频格式全被跳过，
+# 表现为 "Requested format is not available"（2026-10-28 实测踩过）。
+for _pkg in ('yt_dlp', 'yt_dlp_ejs', 'imageio_ffmpeg', 'gallery_dl'):
     _tmp = collect_all(_pkg)
     datas += _tmp[0]
     binaries += _tmp[1]

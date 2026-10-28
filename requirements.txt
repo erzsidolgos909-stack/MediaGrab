@@ -2,6 +2,8 @@
 gallery-dl>=1.30
 requests>=2.31
 yt-dlp>=2025.1.1
+# YouTube 的 JS 挑战求解脚本，2026 版 yt-dlp 必需；缺了视频格式全被跳过
+yt-dlp-ejs>=0.8
 imageio-ffmpeg>=0.4.9
 
 # 开发用
