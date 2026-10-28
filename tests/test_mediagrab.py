@@ -107,6 +107,44 @@ class TestStreamFileDetect:
         assert not mg._looks_like_stream_file(path), path
 
 
+class TestCaptureLogger:
+    """ignoreerrors 打开后，yt-dlp 只通过 logger.error 报错。
+
+    不接管它，用户看到的永远是笼统提示——2026-10-28 就是报成
+    「没有可下载的内容」，真实原因是 SSL 连接被切断。
+    """
+
+    def test_collects_errors(self):
+        sink = []
+        log = mg._CaptureLogger(sink)
+        log.debug("noise")
+        log.info("noise")
+        log.warning("noise")
+        log.error("  ERROR: [youtube] abc: boom  ")
+        log.error("")
+        assert sink == ["ERROR: [youtube] abc: boom"]
+
+    def test_silent_levels_add_nothing(self):
+        sink = []
+        log = mg._CaptureLogger(sink)
+        for fn in ("debug", "info", "warning"):
+            getattr(log, fn)(" چیزی ")
+        assert sink == []
+
+
+class TestFriendlyError:
+    def test_ssl_eof_gets_chinese_hint(self):
+        msg = "ERROR: [youtube] x: Unable to download API page: [SSL: UNEXPECTED_EOF_WHILE_READING]"
+        hint = mg.friendly_error(msg)
+        assert "代理" in hint and "连接被中途切断" in hint
+
+    def test_unknown_error_passes_through(self):
+        assert mg.friendly_error("weird failure xyz") == "weird failure xyz"
+
+    def test_brief_keeps_first_line_only(self):
+        assert mg._brief(Exception("第一行\n第二行")) == "第一行"
+
+
 class TestYdlFormat:
     """格式串决定下下来的文件手机能不能放。
 

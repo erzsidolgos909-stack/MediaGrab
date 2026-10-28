@@ -344,6 +344,31 @@ def _looks_like_stream_file(path):
     return re.search(r"\.f\d+\.[A-Za-z0-9]+$", name) is not None
 
 
+class _CaptureLogger:
+    """把 yt-dlp 的错误记下来。
+
+    开了 ignoreerrors 之后，yt-dlp 不再抛异常，只通过 logger.error() 报告；
+    不接管它，用户就只能看到我们写的笼统提示，看不到真实原因。
+    """
+
+    def __init__(self, sink):
+        self.sink = sink
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        text = str(msg or "").strip()
+        if text:
+            self.sink.append(text)
+
+
 def _build_ydl_format(audio_only, quality, compat=True):
     """拼 yt-dlp 的格式串。
 
@@ -416,6 +441,11 @@ FRIENDLY_ERRORS = (
      "改用 Firefox（cookie 不加密，选中即可读），或者手工导出一份 cookies.txt 填进左边那栏"),
     ("sign in to confirm",
      "这个站点要求登录。用「或读浏览器」选你登录过的浏览器，或导入 cookies 文件"),
+    ("unexpected_eof",
+     "连接被中途切断——常见于代理节点不稳或被拦截。换一个代理节点，或者等一会儿重试。"
+     "（不是链接的问题，也不是程序的问题）"),
+    ("unable to download api page",
+     "连不上站点的接口，多半是代理/网络问题。换节点或关掉代理直连再试"),
 )
 
 
@@ -446,6 +476,7 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
     url = real_url
 
     os.makedirs(outdir, exist_ok=True)
+    state_errors = []          # yt-dlp 的真实错误（ignoreerrors 会吞掉它们）
     opts = {
         # 相册（Instagram carousel、播放列表）里每项的标题常常一样，
         # 不加序号会互相覆盖——2026-10-26 实测：12 个视频只剩 1 个。
@@ -463,7 +494,10 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
         "no_warnings": True,
         # 相册/图集帖里常混着图片子项，yt-dlp 遇到会报 "No video formats found"。
         # 不开这个，一个图片子项会让整条帖子放弃（Instagram 的 12 个视频就是这样丢的）。
+        # 代价：真实错误也被吞掉，所以下面挂一个 logger 把错误捞出来，
+        # 否则用户只会看到笼统的「没有可下载的内容」（2026-10-28 踩过）。
         "ignoreerrors": True,
+        "logger": _CaptureLogger(state_errors),
         "postprocessors": [],
     }
     ffmpeg = find_ffmpeg()
@@ -498,7 +532,11 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
             if info is None:
-                # ignoreerrors=True 时，整体失败会返回 None 而不是抛异常
+                # ignoreerrors=True 时，整体失败会返回 None 而不是抛异常。
+                # 真实原因在 logger 里，别拿笼统的话糊弄用户。
+                real = _brief(state_errors[-1]) if state_errors else ""
+                if real:
+                    raise DownloadFailed(f"下载失败：{real}")
                 raise DownloadFailed("这条链接没有可下载的内容（可能是纯图片帖，或需要登录）")
             # 优先用 yt-dlp 给的最终文件路径：合并后是 .mp4，
             # 而 progress hook 最后一条记的是音频流（.m4a），会误导日志。
@@ -537,6 +575,9 @@ def download_video(url, outdir, audio_only, quality, cookies, browser, emit, can
         if attempt < retries:
             emit("log", f"  重试 {attempt}/{retries} ……")
             time.sleep(2 * attempt)
+    # 有 logger 抓到的真实错误就报它，比「重试 3 次后仍失败」有用
+    if state_errors:
+        raise DownloadFailed(f"重试 {retries} 次后仍失败：{_brief(state_errors[-1])}")
     raise DownloadFailed(f"重试 {retries} 次后仍失败：{_brief(last)}")
 
 
