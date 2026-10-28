@@ -440,7 +440,10 @@ FRIENDLY_ERRORS = (
      "Chrome / Edge 从 127 版起给 cookie 加了系统级加密（App-Bound Encryption），yt-dlp 解不开。"
      "改用 Firefox（cookie 不加密，选中即可读），或者手工导出一份 cookies.txt 填进左边那栏"),
     ("sign in to confirm",
-     "这个站点要求登录。用「或读浏览器」选你登录过的浏览器，或导入 cookies 文件"),
+     "站点要求人机验证（YouTube 常见，随机触发，跟节点和视频都有关）。"
+     "先多试两次，常能过；要稳定就给它一份「已登录」的 cookies 文件——"
+     "在 Firefox 里登录后选 Firefox，或用插件从已登录的浏览器导出 cookies.txt。"
+     "（Chrome 的 cookies 新版加了系统级加密，程序读不了）"),
     ("unexpected_eof",
      "连接被中途切断——常见于代理节点不稳或被拦截。换一个代理节点，或者等一会儿重试。"
      "（不是链接的问题，也不是程序的问题）"),
